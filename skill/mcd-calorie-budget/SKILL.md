@@ -119,8 +119,11 @@ export MCD_MCP_TOKEN=...
 PYTHONPATH=src python3 -m mcd_calorie_budget smoke
 PYTHONPATH=src python3 -m mcd_calorie_budget recommend \
   --calorie-cap 650 --budget 35 --city 上海 --keyword 徐汇 --top 3
+# 外送
+PYTHONPATH=src python3 -m mcd_calorie_budget addresses
+PYTHONPATH=src python3 -m mcd_calorie_budget recommend --mode delivery --address-id ... --calorie-cap 650 --budget 40
 # 下单必须 --confirm
 PYTHONPATH=src python3 -m mcd_calorie_budget order --from-json plan.json --pick A --confirm
 ```
 
-Agent 在能跑本地命令时，可用 CLI 完成筛品→领券→算价；对话式客户端则按上文顺序直接调 MCP Tools。两者约束一致：**无确认不下单**。
+Agent 在能跑本地命令时，可用 CLI 完成筛品→领券→算价；对话式客户端则按上文顺序直接调 MCP Tools。两者约束一致：**无确认不下单**。默认优先主食/套餐，避免只推低卡饮料。

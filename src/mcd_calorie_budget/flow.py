@@ -10,13 +10,18 @@ from .parsers import (
     default_round_list,
     extract_api_json,
     fen_to_yuan,
+    meal_role,
     normalize_name,
+    nutrition_match_kind,
+    parse_addresses,
     parse_coupons,
     parse_meal_detail,
     parse_meals,
     parse_nutrition_response,
     parse_price,
     parse_stores,
+    redact_address_line,
+    redact_phone,
 )
 from .rank import Candidate, rank_candidates
 
@@ -33,6 +38,7 @@ class FlowResult:
     time_info: str = ""
     foods_matched: int = 0
     store: dict[str, Any] | None = None
+    address: dict[str, Any] | None = None
     available_coupons: list[dict[str, Any]] = field(default_factory=list)
     store_coupons: list[dict[str, Any]] = field(default_factory=list)
     candidates: list[Candidate] = field(default_factory=list)
@@ -74,15 +80,24 @@ class CalorieBudgetFlow:
         city: str = "上海",
         keyword: str = "",
         dining_mode: str = "takeout",  # dine_in | takeout | delivery
-        be_type: int = 1,  # 1 takeout/dine-in, 5 DT, 2 delivery
-        order_type: int = 1,
+        be_type: int | None = None,  # 1 takeout/dine-in, 2 delivery, 5 DT
+        order_type: int | None = None,
         store_code: str | None = None,
+        address_id: str | None = None,
         auto_bind: bool = True,
         top: int = 3,
         max_meal_scan: int = 40,
+        prefer_mains: bool = True,
     ) -> FlowResult:
         self._tool_log = []
         out = FlowResult()
+
+        if dining_mode == "delivery":
+            be_type = 2 if be_type is None else be_type
+            order_type = 2 if order_type is None else order_type
+        else:
+            be_type = 1 if be_type is None else be_type
+            order_type = 1 if order_type is None else order_type
 
         # 1) time
         t = self._tool("now-time-info")
@@ -104,8 +119,20 @@ class CalorieBudgetFlow:
         out.foods_matched = len(under)
         self.log(f"营养表 {len(foods)} 条，≤{calorie_cap:.0f} kcal：{len(under)} 条")
 
-        # 3) store
-        if store_code:
+        # 3) store (+ delivery address)
+        address_id_resolved: str | None = None
+        if dining_mode == "delivery":
+            store, address_id_resolved, addr_notes = self._resolve_delivery_store(
+                address_id=address_id, store_code=store_code
+            )
+            out.notes.extend(addr_notes)
+            if address_id_resolved:
+                # keep redacted address snapshot for CLI display
+                out.address = {"addressId": address_id_resolved}
+            if not store:
+                out.tool_log = list(self._tool_log)
+                return out
+        elif store_code:
             store = {"storeCode": store_code, "storeName": store_code}
         else:
             st = self._tool(
@@ -155,8 +182,14 @@ class CalorieBudgetFlow:
             nut = _match_nutrition(name, nutrition_by_name)
             kcal = _as_float(nut.get("energyKcal")) if nut else None
             protein = _as_float(nut.get("protein")) if nut else None
+            role = meal_role(name)
+            matched_product = str(nut.get("productName")) if nut else None
+            match_kind = nutrition_match_kind(name, matched_product)
             # Prefer items with known kcal under cap, else combos/burgers for detail expand
             score = 0.0
+            if prefer_mains and role in ("drink", "dessert"):
+                # still allow later if mains empty; heavily deprioritize now
+                score -= 80
             if kcal is not None:
                 if kcal > calorie_cap:
                     continue
@@ -165,14 +198,39 @@ class CalorieBudgetFlow:
                 score += 15  # unknown kcal combos: still try via detail
             if any(k in name for k in ("套餐", "三件套", "两件套")) and kcal is not None:
                 score += 25
+            if role == "main":
+                score += 20
             if any(k in name for k in ("汉堡", "巨无霸", "板烧", "麦辣", "麦香", "安格斯")):
                 score += 10
             if budget_cny is not None:
                 score += max(0, 30 - abs(price - budget_cny * 0.7))
-            scored.append((score, code, {"name": name, "price": price, "kcal": kcal, "protein": protein, "nut": nut}))
+            scored.append(
+                (
+                    score,
+                    code,
+                    {
+                        "name": name,
+                        "price": price,
+                        "kcal": kcal,
+                        "protein": protein,
+                        "nut": nut,
+                        "role": role,
+                        "match_kind": match_kind,
+                    },
+                )
+            )
 
         scored.sort(key=lambda x: -x[0])
-        pool = scored[:max_meal_scan]
+        if prefer_mains:
+            mains = [x for x in scored if x[2].get("role") == "main"]
+            if mains:
+                pool = mains[:max_meal_scan]
+            else:
+                # fall back but warn — avoids recommending only zero-cal drinks
+                pool = scored[:max_meal_scan]
+                out.notes.append("未找到明显主食/套餐，结果可能含小食或饮品，请自行核对。")
+        else:
+            pool = scored[:max_meal_scan]
         if not pool:
             out.notes.append("菜单与热量约束无交集，请放宽 calorie_cap 或 budget。")
             out.tool_log = list(self._tool_log)
@@ -280,6 +338,13 @@ class CalorieBudgetFlow:
             if not price or price.get("pay_yuan") is None:
                 continue
 
+            match_kind = meta.get("match_kind") or "none"
+            if looks_combo and match_kind in ("component_only", "partial", "none") and not (
+                detail.get("rounds") and item_names and len(item_names) > 1
+            ):
+                out.notes.append(
+                    f"「{name}」热量可能仅按单品口径估算，套餐真实热量可能更高。"
+                )
             cand = Candidate(
                 id=str(len(candidates) + 1),  # temporary; re-letter after rank
                 title=name,
@@ -300,6 +365,9 @@ class CalorieBudgetFlow:
                     "be_code": be_code,
                     "take_way_list": price.get("take_way_list") or [],
                     "dining_mode": dining_mode,
+                    "address_id": address_id_resolved,
+                    "match_kind": match_kind,
+                    "role": meta.get("role"),
                 },
             )
             candidates.append(cand)
@@ -368,12 +436,89 @@ class CalorieBudgetFlow:
         }
         if be_code and be_type != 1:
             args["beCode"] = be_code
+        address_id = extra.get("address_id")
+        if be_type == 2 and address_id:
+            args["addressId"] = address_id
         if tw and order_type == 1:
             args["takeWayCode"] = tw
 
         res = self._tool("create-order", args)
         blob = extract_api_json(res["text"]) or {}
         return {"text": res["text"], "json": blob}
+
+
+    def list_delivery_addresses(self) -> list[dict[str, Any]]:
+        """Return redacted address summaries for CLI listing."""
+        res = self._tool("delivery-query-addresses")
+        raw = parse_addresses(res["text"])
+        out = []
+        for a in raw:
+            out.append(
+                {
+                    "addressId": a.get("addressId"),
+                    "contactName": a.get("contactName"),
+                    "phone_redacted": redact_phone(a.get("phone")),
+                    "address_redacted": redact_address_line(a.get("fullAddress"), keep_chars=18),
+                    "fullAddress": a.get("fullAddress"),
+                    "raw": a,
+                }
+            )
+        return out
+
+    def _resolve_delivery_store(
+        self,
+        *,
+        address_id: str | None,
+        store_code: str | None,
+    ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+        notes: list[str] = []
+        addrs = self.list_delivery_addresses()
+        if not addrs:
+            notes.append(
+                "账号暂无外送地址。请先在麦当劳 App 添加，或让 Agent 经用户确认后调用 delivery-create-address。"
+            )
+            return None, None, notes
+        chosen = None
+        if address_id:
+            for a in addrs:
+                if str(a.get("addressId")) == str(address_id):
+                    chosen = a
+                    break
+            if not chosen:
+                notes.append(f"找不到 addressId={address_id[-6:]}…，请用 addresses 子命令查看。")
+                return None, None, notes
+        else:
+            chosen = addrs[0]
+            if len(addrs) > 1:
+                notes.append(
+                    f"未指定 --address-id，默认使用第一条（共 {len(addrs)} 条）。"
+                    "可用 `mcd-calorie-budget addresses` 查看后传入。"
+                )
+        aid = str(chosen.get("addressId"))
+        self.log(
+            f"外送地址：{chosen.get('address_redacted')} / {chosen.get('phone_redacted')}"
+        )
+        if store_code:
+            # still need beCode from delivery-query-stores when possible
+            st = self._tool(
+                "delivery-query-stores",
+                {"beType": 2, "addressId": aid},
+            )
+            stores = parse_stores(st["text"])
+            match = next((s for s in stores if str(s.get("storeCode")) == str(store_code)), None)
+            if match:
+                return match, aid, notes
+            notes.append("指定 storeCode 不在该地址可配送列表，仍按编码下单（可能失败）。")
+            return {"storeCode": store_code, "storeName": store_code}, aid, notes
+
+        st = self._tool("delivery-query-stores", {"beType": 2, "addressId": aid})
+        stores = parse_stores(st["text"])
+        open_stores = [s for s in stores if s.get("businessStatus") in (True, "true", 1, "1")]
+        pick = open_stores or stores
+        if not pick:
+            notes.append("该地址暂无可配送门店（或已打烊）。")
+            return None, aid, notes
+        return pick[0], aid, notes
 
 
 def _as_float(v: Any) -> float | None:

@@ -234,3 +234,66 @@ def normalize_name(name: str) -> str:
     for ch in (" ", "\u3000", "（", "）", "(", ")", "【", "】", "-", "_"):
         s = s.replace(ch, "")
     return s
+
+
+def parse_addresses(text: str) -> list[dict[str, Any]]:
+    """Parse delivery-query-addresses payload."""
+    blob = extract_api_json(text)
+    if not blob:
+        return []
+    data = blob.get("data")
+    if isinstance(data, dict) and isinstance(data.get("addresses"), list):
+        return [x for x in data["addresses"] if isinstance(x, dict)]
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    return []
+
+
+def redact_phone(phone: object) -> str:
+    s = str(phone or "")
+    digits = re.sub(r"\D", "", s)
+    if len(digits) >= 7:
+        return f"{digits[:3]}****{digits[-4:]}"
+    if s:
+        return "***"
+    return ""
+
+
+def redact_address_line(addr: object, *, keep_chars: int = 12) -> str:
+    s = str(addr or "").strip()
+    if len(s) <= keep_chars:
+        return s or "(空)"
+    return s[:keep_chars] + "…"
+
+
+def meal_role(name: str) -> str:
+    """Rough meal role for ranking: main / side / drink / dessert / other."""
+    n = name or ""
+    drink_kw = ("可乐", "雪碧", "豆浆", "咖啡", "奶茶", "橙汁", "纯悦", "汽水", "热巧", "冰露", "柠檬红茶", "优酸乳")
+    dessert_kw = ("派", "麦旋风", "圆筒", "甜筒", "新地", "布丁", "蛋挞", "麦满分冰淇淋")
+    side_kw = ("薯条", "麦乐鸡", "鸡块", "玉米", "沙拉", "小食", "薯格", "洋葱圈")
+    main_kw = ("汉堡", "巨无霸", "板烧", "麦辣", "安格斯", "套餐", "三件套", "两件套", "米堡", "卷", "麦香鱼", "腿堡", "鸡腿")
+    if any(k in n for k in drink_kw):
+        return "drink"
+    if any(k in n for k in dessert_kw) and "套餐" not in n:
+        return "dessert"
+    if any(k in n for k in main_kw):
+        return "main"
+    if any(k in n for k in side_kw):
+        return "side"
+    return "other"
+
+
+def nutrition_match_kind(meal_name: str, matched_name: str | None) -> str:
+    """exact | component_only | none — warn when combo uses single-item kcal."""
+    if not matched_name:
+        return "none"
+    a = normalize_name(meal_name)
+    b = normalize_name(matched_name)
+    if a == b:
+        return "exact"
+    if any(k in meal_name for k in ("套餐", "三件套", "两件套", "开心乐园")) and a != b:
+        return "component_only"
+    if b in a or a in b:
+        return "partial"
+    return "none"

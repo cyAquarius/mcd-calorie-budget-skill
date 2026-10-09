@@ -37,9 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("takeout", "dine_in", "delivery"),
         default="takeout",
-        help="就餐方式（delivery 需账号已有地址，本 CLI 先支持 takeout/dine_in）",
+        help="就餐方式：takeout/dine_in 用附近门店；delivery 用账号外送地址",
+    )
+    rec.add_argument(
+        "--address-id",
+        default=None,
+        help="外送地址 ID（delivery-query-addresses）；省略则用第一条",
     )
     rec.add_argument("--store-code", default=None, help="指定门店编码，跳过附近搜索")
+    rec.add_argument(
+        "--allow-sides",
+        action="store_true",
+        help="推荐时不优先主食/套餐（默认会降权纯饮品/甜品）",
+    )
     rec.add_argument("--no-auto-bind", action="store_true", help="不调用 auto-bind-coupons")
     rec.add_argument("--top", type=int, default=3)
     rec.add_argument("--json", action="store_true")
@@ -55,6 +65,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     order.add_argument("--take-way", default=None, help="eat-in / locker-out 等")
     order.add_argument("--json", action="store_true")
+
+    addrs = sub.add_parser("addresses", help="列出账号外送地址（电话/地址已脱敏）")
+    addrs.add_argument("--json", action="store_true")
 
     return p
 
@@ -85,14 +98,6 @@ def cmd_smoke(args: argparse.Namespace) -> int:
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
-    if args.mode == "delivery":
-        print(
-            "当前 CLI 的 recommend 主路径为到店自取/外带 (beType=1)。"
-            "外送请用 Agent Skill + delivery-* 工具，或后续版本。",
-            file=sys.stderr,
-        )
-        return 2
-
     client = McpClient()
     log = (lambda m: None) if args.quiet else (lambda m: print(m, file=sys.stderr))
     flow = CalorieBudgetFlow(client, log=log)
@@ -104,22 +109,29 @@ def cmd_recommend(args: argparse.Namespace) -> int:
             city=args.city,
             keyword=args.keyword,
             dining_mode=args.mode,
-            be_type=1,
-            order_type=1,
             store_code=args.store_code,
+            address_id=args.address_id,
             auto_bind=not args.no_auto_bind,
             top=args.top,
+            prefer_mains=not args.allow_sides,
         )
     except McpError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 
     payload = {
+        "mode": args.mode,
         "store": {
             "storeCode": (result.store or {}).get("storeCode"),
             "storeName": (result.store or {}).get("storeName"),
             "address": (result.store or {}).get("address"),
+            "beCode": (result.store or {}).get("beCode"),
         },
+        "address": {
+            "addressId": (result.address or {}).get("addressId"),
+        }
+        if result.address
+        else None,
         "nutrition_under_cap": result.foods_matched,
         "available_coupons": [
             {"title": c.get("title"), "status": c.get("status")} for c in result.available_coupons[:10]
@@ -175,9 +187,13 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         return 0
 
     store = result.store or {}
+    print(f"模式：{args.mode}")
     print(f"门店：{store.get('storeName')}  code={store.get('storeCode')}")
     if store.get("address"):
         print(f"地址：{_sanitize_address(store.get('address'))}")
+    if result.address and result.address.get("addressId"):
+        aid = str(result.address["addressId"])
+        print(f"外送地址ID：…{aid[-8:]}")
     print(
         f"约束：calorie_cap={args.calorie_cap} kcal"
         + (f"  budget=¥{args.budget}" if args.budget is not None else "")
@@ -280,6 +296,47 @@ def cmd_order(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def cmd_addresses(args: argparse.Namespace) -> int:
+    client = McpClient()
+    flow = CalorieBudgetFlow(client, log=lambda m: print(m, file=sys.stderr))
+    try:
+        rows = flow.list_delivery_addresses()
+    except McpError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    payload = [
+        {
+            "addressId": r.get("addressId"),
+            "contactName": r.get("contactName"),
+            "phone": r.get("phone_redacted"),
+            "address": r.get("address_redacted"),
+        }
+        for r in rows
+    ]
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if not payload:
+        print("暂无外送地址。")
+        return 0
+    print(f"{'#':<4}{'联系人':<8}{'电话':<14}{'地址(脱敏)':<24} addressId尾号")
+    for i, r in enumerate(payload, 1):
+        aid = str(r.get("addressId") or "")
+        print(
+            f"{i:<4}{str(r.get('contactName') or '')[:6]:<8}"
+            f"{str(r.get('phone') or ''):<14}"
+            f"{str(r.get('address') or ''):<24} …{aid[-8:]}"
+        )
+    print()
+    print("外送推荐示例：")
+    print(
+        "  python -m mcd_calorie_budget recommend --mode delivery "
+        "--address-id <完整addressId> --calorie-cap 650 --budget 40"
+    )
+    return 0
+
+
 def _redact_id(v: object) -> str | None:
     if v is None:
         return None
@@ -305,6 +362,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_recommend(args)
         if args.cmd == "order":
             return cmd_order(args)
+        if args.cmd == "addresses":
+            return cmd_addresses(args)
     except McpError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

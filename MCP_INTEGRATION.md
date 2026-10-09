@@ -104,8 +104,15 @@
 | 命令 | 对应 Tools |
 |---|---|
 | `python -m mcd_calorie_budget smoke` | `now-time-info` / `list-nutrition-foods` / `campaign-calendar` / `available-coupons` |
-| `python -m mcd_calorie_budget recommend ...` | 上表全链路至 `calculate-price`（可选 `auto-bind-coupons`） |
-| `python -m mcd_calorie_budget order --confirm` | `create-order`（强制显式确认） |
+| `python -m mcd_calorie_budget addresses` | `delivery-query-addresses`（输出脱敏） |
+| `python -m mcd_calorie_budget recommend ...` | 堂食/外带：`query-nearby-stores` → … → `calculate-price` |
+| `python -m mcd_calorie_budget recommend --mode delivery ...` | `delivery-query-addresses` → `delivery-query-stores` → … → `calculate-price`（`beType=2` / `orderType=2`） |
+| `python -m mcd_calorie_budget order --confirm` | `create-order`（强制显式确认；外送带 `addressId`） |
 
-Token 仅通过环境变量 `MCD_MCP_TOKEN` 注入；客户端日志只打印工具名与脱敏摘要，不打印 Token。
+### CLI 实现细节（与竞品踩坑对齐）
+
+1. **营养 DSL**：`list-nutrition-foods` 的 `data` 不是 JSON，按 `[N]{cols}:` + 行解析。
+2. **主食优先**：默认降权纯饮品/甜品，避免「无糖可乐」因低卡刷成推荐第一名；可用 `--allow-sides` 关闭。
+3. **套餐热量警告**：套餐名若只能匹配到单品营养行，会在 notes 标明「可能仅单品口径」。
+4. **Token**：环境变量 `MCD_MCP_TOKEN`，或文件 `~/.config/mcd/mcp_token` / `MCD_MCP_TOKEN_FILE`；日志不打印完整 Token。
 

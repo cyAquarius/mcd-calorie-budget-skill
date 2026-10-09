@@ -1,4 +1,12 @@
-from mcd_calorie_budget.parsers import parse_nutrition_dsl, fen_to_yuan, extract_api_json
+from mcd_calorie_budget.parsers import (
+    parse_nutrition_dsl,
+    fen_to_yuan,
+    extract_api_json,
+    meal_role,
+    nutrition_match_kind,
+    parse_addresses,
+    redact_phone,
+)
 from mcd_calorie_budget.rank import Candidate, rank_candidates
 
 
@@ -35,3 +43,24 @@ def test_rank():
     ]
     ranked = rank_candidates(cands, calorie_cap=650, budget_cny=30, calorie_target=650)
     assert [c.id for c in ranked] == ["B", "A"]
+
+
+def test_meal_role():
+    assert meal_role("巨无霸") == "main"
+    assert meal_role("无糖可口可乐中杯") == "drink"
+    assert meal_role("中薯条") == "side"
+    assert meal_role("苹果派") == "dessert"
+
+
+def test_nutrition_match_kind():
+    assert nutrition_match_kind("巨无霸", "巨无霸") == "exact"
+    assert nutrition_match_kind("巨无霸三件套", "巨无霸") == "component_only"
+    assert nutrition_match_kind("神秘新品", None) == "none"
+
+
+def test_parse_addresses_and_redact():
+    text = '{"success":true,"data":{"addresses":[{"addressId":"ABC123","contactName":"测","phone":"13800138000","fullAddress":"江苏省南京市栖霞区某某路1号"}]}}'
+    rows = parse_addresses(text)
+    assert len(rows) == 1
+    assert rows[0]["addressId"] == "ABC123"
+    assert redact_phone("13800138000") == "138****8000"

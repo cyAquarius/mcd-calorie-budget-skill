@@ -4,7 +4,7 @@
       "type": "streamablehttp",
       "url": "https://mcp.mcd.cn",
       "headers": {
-        "Authorization": "Bearer ${MCD_MCP_TOKEN}"
+        "Authorization": "Bearer YOUR_MCP_TOKEN"
       }
     }
   }

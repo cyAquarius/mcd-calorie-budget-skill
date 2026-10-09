@@ -11,6 +11,28 @@ from typing import Any
 
 DEFAULT_URL = "https://mcp.mcd.cn"
 
+def load_mcp_token() -> str:
+    """Resolve token from env, MCD_MCP_TOKEN_FILE, or ~/.config/mcd/mcp_token."""
+    env = (os.environ.get("MCD_MCP_TOKEN") or "").strip()
+    if env:
+        return env
+    file_hint = (os.environ.get("MCD_MCP_TOKEN_FILE") or "").strip()
+    candidates = []
+    if file_hint:
+        candidates.append(os.path.expanduser(file_hint))
+    candidates.append(os.path.expanduser("~/.config/mcd/mcp_token"))
+    for path in candidates:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                value = f.read().strip()
+            if value:
+                return value
+        except OSError:
+            continue
+    return ""
+
+
+
 
 class McpError(RuntimeError):
     """MCP transport or tool error."""
@@ -23,14 +45,15 @@ class McpClient:
         url: str = DEFAULT_URL,
         *,
         client_name: str = "mcd-calorie-budget-cli",
-        client_version: str = "0.1.0",
+        client_version: str = "0.2.0",
         timeout: float = 120.0,
     ) -> None:
         self.url = url.rstrip("/")
-        self.token = (token or os.environ.get("MCD_MCP_TOKEN") or "").strip()
+        self.token = (token or load_mcp_token() or "").strip()
         if not self.token:
             raise McpError(
-                "缺少 MCD_MCP_TOKEN。请 export MCD_MCP_TOKEN=... "
+                "缺少 MCP Token。请 export MCD_MCP_TOKEN=...，"
+                "或写入 ~/.config/mcd/mcp_token，"
                 "或在 https://open.mcd.cn/mcp 申请。"
             )
         self.timeout = timeout
