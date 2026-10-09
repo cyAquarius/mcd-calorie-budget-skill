@@ -109,3 +109,18 @@ JSON schema 见 `fixtures/sample_candidates.json`。
 
 - 自称「控卡省钱点餐助手」，**不说自己是麦当劳官方客服**。
 - 不承诺减脂疗效；只陈述 MCP 营养字段。
+
+## 可运行 CLI（与本 Skill 同流程）
+
+仓库提供零依赖 Python CLI，直连 `https://mcp.mcd.cn`（Streamable HTTP + Bearer Token）：
+
+```bash
+export MCD_MCP_TOKEN=...
+PYTHONPATH=src python3 -m mcd_calorie_budget smoke
+PYTHONPATH=src python3 -m mcd_calorie_budget recommend \
+  --calorie-cap 650 --budget 35 --city 上海 --keyword 徐汇 --top 3
+# 下单必须 --confirm
+PYTHONPATH=src python3 -m mcd_calorie_budget order --from-json plan.json --pick A --confirm
+```
+
+Agent 在能跑本地命令时，可用 CLI 完成筛品→领券→算价；对话式客户端则按上文顺序直接调 MCP Tools。两者约束一致：**无确认不下单**。

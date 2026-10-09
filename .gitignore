@@ -13,3 +13,4 @@ venv/
 .idea/
 .vscode/
 *.log
+fixtures/smoke_last_result.json

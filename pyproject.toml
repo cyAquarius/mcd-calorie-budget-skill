@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcd-calorie-budget"
+version = "0.1.0"
+description = "控卡省钱点餐助手 — McDonald's China MCP CLI / Agent Skill (M-CODE)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "UNLICENSED" }
+authors = [{ name = "cyAquarius" }]
+dependencies = []
+
+[project.scripts]
+mcd-calorie-budget = "mcd_calorie_budget.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

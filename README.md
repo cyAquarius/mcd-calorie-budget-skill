@@ -2,7 +2,7 @@
 
 > 麦当劳程序员节创意开发大赛（M-CODE）参赛作品 · 非官方产品
 
-基于麦当劳中国 MCP（`https://mcp.mcd.cn`）的 **Agent Skill**：在热量上限和/或预算内推荐可点套餐，自动领取「麦麦省」优惠券、算价，并在你确认后创建订单（返回支付链接，不会静默下单）。
+基于麦当劳中国 MCP（`https://mcp.mcd.cn`）的 **可运行 CLI + Agent Skill**：在热量上限和/或预算内推荐可点套餐，自动领取「麦麦省」优惠券、算价，并在你确认后创建订单（返回支付链接，不会静默下单）。
 
 ## 目标用户
 
@@ -25,30 +25,77 @@
 
 ```text
 .
-├── README.md                 # 本文件（必须）
-├── CONTEST_DECLARATION.md    # 参赛声明（必须，内容不可改）
-├── MCP_INTEGRATION.md        # MCP 接入与工具说明（必须）
-├── mcp-config.example.json   # 脱敏 MCP 配置示例
-├── .env.example              # Token 环境变量占位
-├── skill/mcd-calorie-budget/SKILL.md   # Agent Skill 正文
-├── scripts/rank_combos.py    # 本地排序助手（不伪造 MCP 响应）
-├── fixtures/sample_candidates.json     # 合成样例，仅测排序逻辑
-└── examples/dialogue.md      # 示例对话
+├── README.md
+├── CONTEST_DECLARATION.md      # 参赛声明（内容不可改）
+├── MCP_INTEGRATION.md          # MCP 接入与工具说明
+├── mcp-config.example.json
+├── .env.example
+├── pyproject.toml
+├── src/mcd_calorie_budget/     # 可运行 CLI（Streamable HTTP → mcp.mcd.cn）
+├── skill/mcd-calorie-budget/SKILL.md
+├── scripts/rank_combos.py      # 本地排序助手
+├── scripts/smoke_mcp.py        # 只读冒烟（不下单）
+├── fixtures/sample_candidates.json
+└── examples/dialogue.md
 ```
 
 ## 前置条件
 
 1. 前往 [open.mcd.cn/mcp](https://open.mcd.cn/mcp) 用**手机号**登录并申请 MCP Token  
-2. MCP Client 支持 **Streamable HTTP**  
-3. 将 Token 放进环境变量，**不要写进仓库**
+2. 将 Token 放进环境变量，**不要写进仓库**
 
 ```bash
 export MCD_MCP_TOKEN="你的真实Token"
+# 或：mkdir -p ~/.config/mcd && chmod 700 ~/.config/mcd
+#     umask 077; printf '%s' '你的Token' > ~/.config/mcd/mcp_token
 ```
 
-## 安装 MCP（复制即可）
+## 可运行 CLI（推荐）
 
-将 [`mcp-config.example.json`](./mcp-config.example.json) 拷到你的客户端配置，并把 `${MCD_MCP_TOKEN}` 换成真实 Token（或让客户端读环境变量）：
+无需额外依赖（Python 3.10+ 标准库）：
+
+```bash
+git clone https://github.com/cyAquarius/mcd-calorie-budget-skill.git
+cd mcd-calorie-budget-skill
+export MCD_MCP_TOKEN=...   # 必填
+
+# 1) 只读冒烟（now-time / 营养 / 活动日历 / 可领券）
+PYTHONPATH=src python3 -m mcd_calorie_budget smoke
+
+# 2) 推荐：热量 + 预算 + 附近门店 → 领券算价 → 输出 2～3 方案（默认不下单）
+PYTHONPATH=src python3 -m mcd_calorie_budget recommend \
+  --calorie-cap 650 --budget 35 \
+  --city 上海 --keyword 徐汇 --top 3
+
+# 3) 仅当你明确确认某一方案时才下单（会创建真实订单并返回支付链接）
+PYTHONPATH=src python3 -m mcd_calorie_budget recommend \
+  --calorie-cap 650 --budget 35 --city 上海 --keyword 徐汇 --json > /tmp/plan.json
+PYTHONPATH=src python3 -m mcd_calorie_budget order \
+  --from-json /tmp/plan.json --pick A --confirm
+```
+
+也可安装入口：
+
+```bash
+pip install -e .
+mcd-calorie-budget smoke
+```
+
+### 实机冒烟摘要（脱敏）
+
+在上海徐汇附近、`calorie_cap=650`、`budget=35` 时，CLI 曾得到类似结果（门店名/地址已脱敏，价格以你账号实时 MCP 为准）：
+
+| 方案 | 内容 | 热量 | 蛋白 | 原价 | 优惠 | 实付 |
+|---|---|---:|---:|---:|---:|---:|
+| A | 巨无霸 | 513 | 27 | 26.50 | 6.62 | 19.88 |
+| B | 牛气满满套餐（培根蔬萃双层牛堡+玉米杯+无糖可乐） | 495 | 26 | 35.00 | 8.75 | 26.25 |
+| C | 麦辣鸡腿汉堡 | 485 | 24 | 22.50 | 5.62 | 16.88 |
+
+只读工具冒烟（`scripts/smoke_mcp.py`）：`now-time-info` / `list-nutrition-foods`（160 条）/ `campaign-calendar` / `available-coupons` / `query-nearby-stores` 均 PASS。
+
+## 安装 MCP（给 Agent 用）
+
+将 [`mcp-config.example.json`](./mcp-config.example.json) 拷到你的客户端配置，并把 `YOUR_MCP_TOKEN` 换成真实 Token：
 
 ```json
 {
@@ -64,25 +111,18 @@ export MCD_MCP_TOKEN="你的真实Token"
 }
 ```
 
-各客户端接入说明见官方：[M-China/mcd-mcp-server](https://github.com/M-China/mcd-mcp-server)。
+官方接入说明：[M-China/mcd-mcp-server](https://github.com/M-China/mcd-mcp-server)。
 
 ### 安装本 Skill
 
-**Cursor / 兼容 Agent Skills 的客户端：**
-
 ```bash
-# 任选其一：项目级或用户级
 mkdir -p .cursor/skills
 cp -R skill/mcd-calorie-budget .cursor/skills/
-
-# 或
-mkdir -p ~/.cursor/skills
-cp -R skill/mcd-calorie-budget ~/.cursor/skills/
 ```
 
-在对话里说「按控卡省钱点餐助手帮我点」或 `/mcd-calorie-budget`，Agent 会按 `SKILL.md` 走完整流程。
+对话里说「按控卡省钱点餐助手帮我点」或 `/mcd-calorie-budget`，Agent 按 `SKILL.md` 走完整流程；也可用本仓库 CLI 做同样的筛品→领券→算价。
 
-## 使用示例
+## 使用示例（Agent）
 
 用户：
 
@@ -102,22 +142,18 @@ Agent（摘要）：
 
 ## 本地排序脚本（可选）
 
-不连 MCP 时，可用合成样例验证「控卡 + 省钱」排序逻辑（**不是真实菜单**）：
+不连 MCP 时，可用合成样例验证排序逻辑：
 
 ```bash
 python3 scripts/rank_combos.py \
   --input fixtures/sample_candidates.json \
-  --calorie-cap 650 \
-  --budget 30 \
-  --top 3
+  --calorie-cap 650 --budget 30 --top 3
 ```
-
-连上 MCP 后，把 `list-nutrition-foods` / `calculate-price` 得到的候选写成同样 JSON 结构再喂给脚本即可。
 
 ## 安全与合规
 
-- 仓库内**无真实 Token**；只用 `${MCD_MCP_TOKEN}` / `YOUR_MCP_TOKEN` 占位  
-- **禁止**在未确认时调用 `create-order`  
+- 仓库内**无真实 Token**；只用环境变量 / `YOUR_MCP_TOKEN` 占位  
+- **禁止**在未确认时调用 `create-order`（CLI 必须加 `--confirm`）  
 - 本项目不代表麦当劳官方背书；商标归权利人所有  
 - 详见 [`CONTEST_DECLARATION.md`](./CONTEST_DECLARATION.md)
 
@@ -128,4 +164,3 @@ python3 scripts/rank_combos.py \
 ## 作者
 
 GitHub: [cyAquarius](https://github.com/cyAquarius)
-

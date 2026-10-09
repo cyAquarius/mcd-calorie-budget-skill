@@ -97,3 +97,15 @@
 | 热量无解 | 放宽上限，或拆成「主食 + 饮品」轻量组合并标明风险 |
 | 算价失败 | 去掉券重试，并提示可能已过期 |
 
+## 可运行 CLI
+
+本仓库 `src/mcd_calorie_budget` 实现同一主链路的命令行客户端：
+
+| 命令 | 对应 Tools |
+|---|---|
+| `python -m mcd_calorie_budget smoke` | `now-time-info` / `list-nutrition-foods` / `campaign-calendar` / `available-coupons` |
+| `python -m mcd_calorie_budget recommend ...` | 上表全链路至 `calculate-price`（可选 `auto-bind-coupons`） |
+| `python -m mcd_calorie_budget order --confirm` | `create-order`（强制显式确认） |
+
+Token 仅通过环境变量 `MCD_MCP_TOKEN` 注入；客户端日志只打印工具名与脱敏摘要，不打印 Token。
+
