@@ -1,0 +1,62 @@
+{
+  "_comment": "合成样例，仅用于本地测试 rank_combos.py，非麦当劳真实菜单/价格。",
+  "calorie_cap": 650,
+  "budget_cny": 30,
+  "candidates": [
+    {
+      "id": "A",
+      "title": "轻量主食+无糖饮料",
+      "items": ["示例主食A", "示例饮料A"],
+      "calories_kcal": 520,
+      "protein_g": 28,
+      "list_price_cny": 34.0,
+      "discount_cny": 6.0,
+      "pay_cny": 28.0,
+      "delivery_fee_cny": 0
+    },
+    {
+      "id": "B",
+      "title": "经典套餐（券后）",
+      "items": ["示例套餐B"],
+      "calories_kcal": 640,
+      "protein_g": 32,
+      "list_price_cny": 42.0,
+      "discount_cny": 14.0,
+      "pay_cny": 28.0,
+      "delivery_fee_cny": 0
+    },
+    {
+      "id": "C",
+      "title": "超预算对照",
+      "items": ["示例套餐C", "示例小食C"],
+      "calories_kcal": 600,
+      "protein_g": 30,
+      "list_price_cny": 48.0,
+      "discount_cny": 5.0,
+      "pay_cny": 43.0,
+      "delivery_fee_cny": 0
+    },
+    {
+      "id": "D",
+      "title": "超热量对照",
+      "items": ["示例套餐D"],
+      "calories_kcal": 890,
+      "protein_g": 40,
+      "list_price_cny": 36.0,
+      "discount_cny": 8.0,
+      "pay_cny": 28.0,
+      "delivery_fee_cny": 0
+    },
+    {
+      "id": "E",
+      "title": "蛋白优先轻卡",
+      "items": ["示例主食E", "示例饮品E"],
+      "calories_kcal": 480,
+      "protein_g": 36,
+      "list_price_cny": 38.0,
+      "discount_cny": 10.0,
+      "pay_cny": 28.0,
+      "delivery_fee_cny": 0
+    }
+  ]
+}
