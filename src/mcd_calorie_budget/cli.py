@@ -13,6 +13,7 @@ _SRC = Path(__file__).resolve().parents[1]
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from mcd_calorie_budget import __version__
 from mcd_calorie_budget.flow import CalorieBudgetFlow
 from mcd_calorie_budget.mcp_client import McpClient, McpError
 
@@ -22,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="mcd-calorie-budget",
         description="控卡省钱点餐助手：热量/预算筛选 → 领券算价 → 可选确认下单",
     )
+    p.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     smoke = sub.add_parser("smoke", help="只读冒烟：now-time / nutrition / calendar / available-coupons")
@@ -187,6 +189,14 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         return 0
 
     store = result.store or {}
+    meta_bits = [f"营养表 ≤cap：{result.foods_matched}"]
+    if result.available_coupons:
+        meta_bits.append(f"麦麦省可领 {len(result.available_coupons)}")
+    if result.store_coupons:
+        meta_bits.append(f"本店可用券 {len(result.store_coupons)}")
+    print("======== 控卡省钱点餐 · 推荐结果 ========")
+    print("数据来源：麦当劳中国 MCP 实时 · " + " · ".join(meta_bits))
+    print()
     print(f"模式：{args.mode}")
     print(f"门店：{store.get('storeName')}  code={store.get('storeCode')}")
     if store.get("address"):
@@ -198,12 +208,8 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         f"约束：calorie_cap={args.calorie_cap} kcal"
         + (f"  budget=¥{args.budget}" if args.budget is not None else "")
     )
-    print(f"营养表中 ≤cap 单品：{result.foods_matched}")
-    if result.available_coupons:
-        print(f"麦麦省可领/列表：{len(result.available_coupons)}（详见 MCP）")
-    if result.store_coupons:
-        print(f"本店可用券：{len(result.store_coupons)}")
     if not result.ranked:
+        print()
         print("无符合条件的方案。")
         for n in result.notes:
             print(f"- {n}")
@@ -220,8 +226,8 @@ def cmd_recommend(args: argparse.Namespace) -> int:
             print(f"     组成：{' + '.join(c.items)}")
     print()
     print("未加 --confirm 不会创建订单。若要下单：")
-    print("  1) 先 recommend --json > /tmp/plan.json")
-    print("  2) python -m mcd_calorie_budget order --from-json /tmp/plan.json --pick A --confirm")
+    print("  1) mcd-calorie-budget recommend ... --json > /tmp/plan.json")
+    print("  2) mcd-calorie-budget order --from-json /tmp/plan.json --pick A --confirm")
     for n in result.notes:
         print(f"note: {n}")
     return 0
@@ -331,7 +337,7 @@ def cmd_addresses(args: argparse.Namespace) -> int:
     print()
     print("外送推荐示例：")
     print(
-        "  python -m mcd_calorie_budget recommend --mode delivery "
+        "  mcd-calorie-budget recommend --mode delivery "
         "--address-id <完整addressId> --calorie-cap 650 --budget 40"
     )
     return 0

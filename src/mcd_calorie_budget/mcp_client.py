@@ -45,7 +45,7 @@ class McpClient:
         url: str = DEFAULT_URL,
         *,
         client_name: str = "mcd-calorie-budget-cli",
-        client_version: str = "0.2.0",
+        client_version: str = "0.2.1",
         timeout: float = 120.0,
     ) -> None:
         self.url = url.rstrip("/")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcd-calorie-budget"
-version = "0.2.0"
+version = "0.2.1"
 description = "控卡省钱点餐助手 — McDonald's China MCP CLI / Agent Skill (M-CODE)"
 readme = "README.md"
 requires-python = ">=3.10"

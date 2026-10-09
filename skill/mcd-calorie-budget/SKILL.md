@@ -112,18 +112,19 @@ JSON schema 见 `fixtures/sample_candidates.json`。
 
 ## 可运行 CLI（与本 Skill 同流程）
 
-仓库提供零依赖 Python CLI，直连 `https://mcp.mcd.cn`（Streamable HTTP + Bearer Token）：
+仓库提供零依赖 Python CLI，直连 `https://mcp.mcd.cn`（Streamable HTTP + Bearer Token）。安装本 Skill：`bash scripts/install_skill.sh`。
 
 ```bash
-export MCD_MCP_TOKEN=...
-PYTHONPATH=src python3 -m mcd_calorie_budget smoke
-PYTHONPATH=src python3 -m mcd_calorie_budget recommend \
+export MCD_MCP_TOKEN=...   # 或 ~/.config/mcd/mcp_token
+pip install -e .           # 可选；得到 mcd-calorie-budget 命令
+mcd-calorie-budget smoke
+mcd-calorie-budget recommend \
   --calorie-cap 650 --budget 35 --city 上海 --keyword 徐汇 --top 3
 # 外送
-PYTHONPATH=src python3 -m mcd_calorie_budget addresses
-PYTHONPATH=src python3 -m mcd_calorie_budget recommend --mode delivery --address-id ... --calorie-cap 650 --budget 40
+mcd-calorie-budget addresses
+mcd-calorie-budget recommend --mode delivery --address-id ... --calorie-cap 650 --budget 40
 # 下单必须 --confirm
-PYTHONPATH=src python3 -m mcd_calorie_budget order --from-json plan.json --pick A --confirm
+mcd-calorie-budget order --from-json plan.json --pick A --confirm
 ```
 
 Agent 在能跑本地命令时，可用 CLI 完成筛品→领券→算价；对话式客户端则按上文顺序直接调 MCP Tools。两者约束一致：**无确认不下单**。默认优先主食/套餐，避免只推低卡饮料。
